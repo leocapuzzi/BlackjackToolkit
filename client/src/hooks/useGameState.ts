@@ -3,8 +3,8 @@ import {
   GameState,
   calculateGameState,
   updateGameState,
-  TOTAL_CARDS,
   PENETRATION_THRESHOLD,
+  calculateHandValue,
 } from '@/lib/zenCount';
 
 export interface HandResult {
@@ -16,6 +16,14 @@ export interface HandResult {
   bet: number;
   timestamp: number;
   trueCount?: number;
+  playerBlackjack?: boolean;
+  dealerBlackjack?: boolean;
+}
+
+interface CardEvent {
+  card: string;
+  owner: 'player' | 'dealer' | 'other';
+  otherPlayerIndex?: number;
 }
 
 export interface SplitHand {
@@ -28,10 +36,10 @@ export function useGameState() {
   const [gameState, setGameState] = useState<GameState>(calculateGameState());
   const [playerCards, setPlayerCards] = useState<string[]>([]);
   const [dealerCards, setDealerCards] = useState<string[]>([]);
-  const [otherPlayersCards, setOtherPlayersCards] = useState<string[][]>([]);
+  const [otherPlayersCards, setOtherPlayersCards] = useState<string[][]>([[]]);
   const [handHistory, setHandHistory] = useState<HandResult[]>([]);
-  const [currentBet, setCurrentBet] = useState<number>(5);
-  const [cardHistory, setCardHistory] = useState<string[]>([]);
+  const [currentBet, setCurrentBet] = useState<number>(0);
+  const [cardHistory, setCardHistory] = useState<CardEvent[]>([]);
   const [splitHands, setSplitHands] = useState<SplitHand[]>([]);
   const [cardCounts, setCardCounts] = useState<Record<string, number>>({});
   const [splitMode, setSplitMode] = useState<'none' | 'split1' | 'split2'>('none');
@@ -42,7 +50,7 @@ export function useGameState() {
     (card: string, owner: 'player' | 'dealer' | 'other', otherPlayerIndex?: number) => {
       const newState = updateGameState(gameState, [card], false);
       setGameState(newState);
-      setCardHistory((prev) => [...prev, card]);
+      setCardHistory((prev) => [...prev, { card, owner, otherPlayerIndex }]);
       setCardCounts((prev) => ({
         ...prev,
         [card]: (prev[card] || 0) + 1,
@@ -143,9 +151,13 @@ export function useGameState() {
       } else if (owner === 'other' && otherPlayerIndex !== undefined) {
         setOtherPlayersCards((prev) => {
           const updated = [...prev];
-          const index = updated[otherPlayerIndex].lastIndexOf(card);
+          const playerHand = updated[otherPlayerIndex];
+          if (!playerHand) {
+            return prev;
+          }
+          const index = playerHand.lastIndexOf(card);
           if (index > -1) {
-            updated[otherPlayerIndex] = updated[otherPlayerIndex].filter((_, i) => i !== index);
+            updated[otherPlayerIndex] = playerHand.filter((_, i) => i !== index);
           }
           return updated;
         });
@@ -153,9 +165,15 @@ export function useGameState() {
 
       // Remove from card history
       setCardHistory((prev) => {
-        const index = prev.lastIndexOf(card);
-        if (index > -1) {
-          return prev.filter((_, i) => i !== index);
+        for (let i = prev.length - 1; i >= 0; i--) {
+          const entry = prev[i];
+          if (
+            entry.card === card &&
+            entry.owner === owner &&
+            (owner !== 'other' || entry.otherPlayerIndex === otherPlayerIndex)
+          ) {
+            return prev.filter((_, idx) => idx !== i);
+          }
         }
         return prev;
       });
@@ -167,20 +185,9 @@ export function useGameState() {
   const undoLastCard = useCallback(() => {
     if (cardHistory.length === 0) return;
 
-    const lastCard = cardHistory[cardHistory.length - 1];
-    
-    if (splitMode === 'split1' && splitHands[0]?.cards.length > 0) {
-      removeCard(lastCard, 'player');
-    } else if (splitMode === 'split2' && splitHands[1]?.cards.length > 0) {
-      removeCard(lastCard, 'player');
-    } else if (splitMode === 'none' && playerCards.length > 0) {
-      removeCard(lastCard, 'player');
-    } else if (dealerCards.length > 0) {
-      removeCard(lastCard, 'dealer');
-    } else if (otherPlayersCards.length > 0) {
-      removeCard(lastCard, 'other', otherPlayersCards.length - 1);
-    }
-  }, [cardHistory, removeCard, splitMode, splitHands, playerCards, dealerCards, otherPlayersCards]);
+    const lastEvent = cardHistory[cardHistory.length - 1];
+    removeCard(lastEvent.card, lastEvent.owner, lastEvent.otherPlayerIndex);
+  }, [cardHistory, removeCard]);
 
   // Split the current hand
   const splitHand = useCallback(() => {
@@ -222,27 +229,35 @@ export function useGameState() {
     setGameState(calculateGameState());
     setPlayerCards([]);
     setDealerCards([]);
-    setOtherPlayersCards([]);
+    setOtherPlayersCards([[]]);
     setCardHistory([]);
     setHandHistory([]);
     setSplitHands([]);
     setCardCounts({});
     setSplitMode('none');
     setOriginalSplitCards([]);
+    setCurrentBet(0);
   }, []);
 
   // End the hand and record result
   const endHand = useCallback(
     (result: 'win' | 'loss' | 'push') => {
+      const recordedPlayerCards = splitMode === 'none' ? [...playerCards] : [...originalSplitCards];
       const handResult: HandResult = {
         id: `hand-${Date.now()}`,
-        playerCards: splitMode === 'none' ? [...playerCards] : [...originalSplitCards],
+        playerCards: recordedPlayerCards,
         dealerCards: [...dealerCards],
-        otherPlayersCards: [...otherPlayersCards],
+        otherPlayersCards: otherPlayersCards
+          .filter((hand) => hand.length > 0)
+          .map((hand) => [...hand]),
         result,
         bet: currentBet,
         timestamp: Date.now(),
         trueCount: gameState.trueCount,
+        playerBlackjack:
+          recordedPlayerCards.length === 2 && calculateHandValue(recordedPlayerCards).value === 21,
+        dealerBlackjack:
+          dealerCards.length === 2 && calculateHandValue(dealerCards).value === 21,
       };
 
       setHandHistory((prev) => [...prev, handResult]);
@@ -250,11 +265,12 @@ export function useGameState() {
       // Reset for next hand
       setPlayerCards([]);
       setDealerCards([]);
-      setOtherPlayersCards([]);
+      setOtherPlayersCards([[]]);
       setCardHistory([]);
       setSplitHands([]);
       setSplitMode('none');
       setOriginalSplitCards([]);
+      setCurrentBet(0);
     },
     [playerCards, dealerCards, otherPlayersCards, currentBet, gameState.trueCount, splitMode, originalSplitCards]
   );
@@ -266,7 +282,12 @@ export function useGameState() {
 
   // Remove other player
   const removeOtherPlayer = useCallback((index: number) => {
-    setOtherPlayersCards((prev) => prev.filter((_, i) => i !== index));
+    setOtherPlayersCards((prev) => {
+      if (prev.length <= 1) {
+        return prev;
+      }
+      return prev.filter((_, i) => i !== index);
+    });
   }, []);
 
   // Check if shoe penetration is reached
@@ -279,7 +300,17 @@ export function useGameState() {
     const pushes = handHistory.filter((h) => h.result === 'push').length;
     const totalHands = handHistory.length;
     const totalBet = handHistory.reduce((sum, h) => sum + h.bet, 0);
-    const totalWinnings = wins * 10 - losses * 10; // Simplified
+    const totalWinnings = handHistory.reduce((sum, hand) => {
+      const baseBet = hand.bet;
+      if (hand.result === 'win') {
+        const blackjackWin = hand.playerBlackjack ? baseBet * 1.5 : baseBet;
+        return sum + blackjackWin;
+      }
+      if (hand.result === 'loss') {
+        return sum - baseBet;
+      }
+      return sum;
+    }, 0);
 
     return {
       wins,

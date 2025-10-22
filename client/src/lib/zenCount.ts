@@ -89,15 +89,14 @@ export function calculateEV(trueCount: number, baseWinRate: number = 0.5): numbe
 
 // Suggest bet based on true count (Kelly Criterion simplified)
 // Bet values in Brazilian Real
-export const BET_VALUES = [5, 10, 15, 20, 25, 50, 100, 200, 500];
+export const BET_VALUES = [5, 25, 125, 250, 500];
 
 export function suggestBet(trueCount: number): number {
   if (trueCount <= 0) return 5; // Minimum bet
-  if (trueCount < 1) return 5;
-  if (trueCount < 2) return 10;
-  if (trueCount < 3) return 25;
-  if (trueCount < 4) return 50;
-  if (trueCount < 5) return 100;
+  if (trueCount < 2) return 25;
+  if (trueCount < 3) return 125;
+  if (trueCount < 4) return 250;
+  if (trueCount < 5) return 500;
   return 500; // Maximum bet
 }
 
@@ -322,7 +321,7 @@ export function calculateGameState(): GameState {
     penetration: 0,
     playerEdge: false,
     ev: 0.5,
-    suggestedBet: 10,
+    suggestedBet: 5,
   };
 }
 
