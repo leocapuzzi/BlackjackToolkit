@@ -14,14 +14,16 @@ interface HandDisplayProps {
 export function HandDisplay({ title, cards, showValue = true, isDealer = false, onRemoveCard }: HandDisplayProps) {
   const { value } = calculateHandValue(cards);
   const isBust = value > 21;
+  const isBlackjack = cards.length === 2 && value === 21;
 
   return (
-    <Card className={isBust ? 'border-red-500 bg-red-50 dark:bg-red-950' : ''}>
+    <Card className={`${isBust ? 'border-red-500 bg-red-50 dark:bg-red-950' : ''} h-[220px]`}>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium">{title}</CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="flex flex-wrap gap-2 mb-2">
+      <CardContent className="flex h-full flex-col gap-3">
+        <div className="flex-1 overflow-y-auto pr-1">
+          <div className="flex flex-wrap gap-2">
           {cards.length === 0 ? (
             <p className="text-sm text-muted-foreground">No cards</p>
           ) : (
@@ -44,13 +46,17 @@ export function HandDisplay({ title, cards, showValue = true, isDealer = false, 
               );
             })
           )}
+          </div>
         </div>
         {showValue && cards.length > 0 && (
-          <div className="flex items-center gap-2">
+          <div className="mt-auto flex flex-wrap items-center gap-2">
             <span className="text-sm font-semibold">Value:</span>
             <Badge className={isBust ? 'bg-red-500' : 'bg-green-500'}>
-              {isBust ? 'BUST' : value}
+              {value}
             </Badge>
+            {isBust && <Badge className="bg-red-600">BUST</Badge>}
+            {isBlackjack && !isDealer && <Badge className="bg-yellow-500 text-black">Blackjack</Badge>}
+            {isBlackjack && isDealer && <Badge className="bg-blue-500 text-white">Dealer Blackjack</Badge>}
           </div>
         )}
       </CardContent>

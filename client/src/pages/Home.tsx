@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -13,7 +13,26 @@ import { HandHistory } from '@/components/HandHistory';
 import { TrueCountStats } from '@/components/TrueCountStats';
 import { DrillMode } from '@/components/DrillMode';
 import { useGameState } from '@/hooks/useGameState';
-import { AlertTriangle, RotateCcw, Undo2, CheckCircle, XCircle, Minus, Zap, BookOpen, TrendingUp, ChevronRight } from 'lucide-react';
+import {
+  RotateCcw,
+  Undo2,
+  CheckCircle,
+  XCircle,
+  Minus,
+  Zap,
+  BookOpen,
+  TrendingUp,
+  ChevronRight,
+  UserPlus,
+  Eraser,
+} from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { checkHighProbabilityAlert, calculateHandValue } from '@/lib/zenCount';
 
 export default function Home() {
@@ -21,10 +40,20 @@ export default function Home() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showHandResult, setShowHandResult] = useState(false);
   const [showDrillMode, setShowDrillMode] = useState(false);
+  const [selectedOtherPlayer, setSelectedOtherPlayer] = useState(0);
+
+  const otherPlayerCount = game.otherPlayersCards.length;
+
+  useEffect(() => {
+    if (selectedOtherPlayer >= otherPlayerCount) {
+      setSelectedOtherPlayer(Math.max(0, otherPlayerCount - 1));
+    }
+  }, [otherPlayerCount, selectedOtherPlayer]);
 
   const handleCardClick = (card: string, owner: 'player' | 'dealer' | 'others'): void => {
     if (owner === 'others') {
-      game.addCard(card, 'other', 0);
+      const targetIndex = Math.max(0, Math.min(selectedOtherPlayer, otherPlayerCount - 1));
+      game.addCard(card, 'other', targetIndex);
     } else {
       game.addCard(card, owner);
     }
@@ -63,9 +92,27 @@ export default function Home() {
   const canSplit = game.playerCards.length === 2 && game.playerCards[0] === game.playerCards[1];
   const probabilityAlert = checkHighProbabilityAlert(game.cardCounts, game.gameState.trueCount);
   const inSplitMode = game.splitMode !== 'none';
+  const otherHands = game.otherPlayersCards;
+  const selectedOtherHand = otherHands[selectedOtherPlayer] || [];
+
+  const handleSelectOtherPlayer = (value: string) => {
+    setSelectedOtherPlayer(parseInt(value, 10));
+  };
+
+  const handleAddOtherPlayer = () => {
+    game.addOtherPlayer();
+    setSelectedOtherPlayer(game.otherPlayersCards.length);
+  };
+
+  const handleClearOtherPlayer = () => {
+    const cardsToRemove = [...selectedOtherHand];
+    cardsToRemove.forEach((card) => {
+      game.removeCard(card, 'other', selectedOtherPlayer);
+    });
+  };
 
   // Get current hand for strategy
-  const currentPlayerCards = inSplitMode 
+  const currentPlayerCards = inSplitMode
     ? (game.splitMode === 'split1' ? game.splitHands[0]?.cards || [] : game.splitHands[1]?.cards || [])
     : game.playerCards;
 
@@ -126,9 +173,9 @@ export default function Home() {
         <GameStats gameState={game.gameState} isPenetrationReached={game.isPenetrationReached} />
 
         {/* Main Content - Reorganized Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,1.4fr)] gap-6">
           {/* Left/Center Column - Hands Display and Card Buttons */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-3 space-y-6">
             <Tabs defaultValue="game" className="w-full">
               <TabsList className="grid w-full grid-cols-4 bg-purple-800/50">
                 <TabsTrigger value="game">Game</TabsTrigger>
@@ -151,6 +198,7 @@ export default function Home() {
                     <HandDisplay
                       title="Dealer Hand"
                       cards={game.dealerCards}
+                      isDealer
                       onRemoveCard={(card: string) => handleRemoveCard(card, 'dealer')}
                     />
                   </div>
@@ -221,7 +269,81 @@ export default function Home() {
                 <div className="space-y-4">
                   <CardButtonGroup owner="player" onCardClick={(card) => handleCardClick(card, 'player')} />
                   <CardButtonGroup owner="dealer" onCardClick={(card) => handleCardClick(card, 'dealer')} />
-                  <CardButtonGroup owner="others" onCardClick={(card) => handleCardClick(card, 'others')} />
+                  <div className="space-y-3">
+                    <CardButtonGroup owner="others" onCardClick={(card) => handleCardClick(card, 'others')} />
+                    {otherHands.length > 0 && (
+                      <div className="glass-sm p-4 rounded-lg border border-purple-500/40 space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <h4 className="text-sm font-semibold text-purple-200">Other Players Hands</h4>
+                          <div className="flex items-center gap-2">
+                            <Select value={String(selectedOtherPlayer)} onValueChange={handleSelectOtherPlayer}>
+                              <SelectTrigger size="sm" className="bg-purple-900/40 text-purple-100 border-purple-500/60">
+                                <SelectValue placeholder="Select player" />
+                              </SelectTrigger>
+                              <SelectContent className="bg-purple-950/95 text-purple-100 border-purple-600">
+                                {otherHands.map((_, index) => (
+                                  <SelectItem key={`other-player-${index}`} value={String(index)}>
+                                    Player {index + 1}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 bg-purple-800/50 text-purple-100 border border-purple-500/60 hover:bg-purple-700"
+                              onClick={handleAddOtherPlayer}
+                              title="Add other player"
+                            >
+                              <UserPlus className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 bg-purple-800/50 text-purple-100 border border-purple-500/60 hover:bg-purple-700 disabled:opacity-40"
+                              onClick={handleClearOtherPlayer}
+                              disabled={selectedOtherHand.length === 0}
+                              title="Clear selected player"
+                            >
+                              <Eraser className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="space-y-3">
+                          {otherHands.map((cards, index) => (
+                            <div
+                              key={`other-hand-${index}`}
+                              className={`space-y-2 rounded-md p-3 transition border ${
+                                index === selectedOtherPlayer
+                                  ? 'border-purple-400/80 bg-purple-800/40'
+                                  : 'border-transparent bg-purple-900/20'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between text-xs text-purple-300">
+                                <span>Player {index + 1}</span>
+                                <span className="italic">Click a card to remove</span>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {cards.map((card, cardIndex) => (
+                                  <div
+                                    key={`${card}-${cardIndex}`}
+                                    className="w-10 h-14 bg-purple-600/80 rounded-lg flex items-center justify-center text-white font-bold cursor-pointer hover:bg-purple-500 transition"
+                                    onClick={() => handleRemoveCard(card, 'other', index)}
+                                    title="Remove card"
+                                  >
+                                    {card}
+                                  </div>
+                                ))}
+                                {cards.length === 0 && (
+                                  <span className="text-xs text-purple-300">No cards yet</span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Actions */}

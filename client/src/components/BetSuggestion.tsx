@@ -1,6 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { GameState, BET_VALUES } from '@/lib/zenCount';
+import { Trash2 } from 'lucide-react';
 
 interface BetSuggestionProps {
   gameState: GameState;
@@ -36,6 +38,14 @@ export function BetSuggestion({ gameState, currentBet, onBetChange }: BetSuggest
                 +{(gameState.trueCount * 0.5).toFixed(1)}%
               </Badge>
             )}
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => onBetChange(0)}
+              title="Reset bet"
+            >
+              <Trash2 className="w-4 h-4" />
+            </Button>
           </div>
         </div>
 
@@ -47,11 +57,9 @@ export function BetSuggestion({ gameState, currentBet, onBetChange }: BetSuggest
             {BET_VALUES.map((bet) => (
               <button
                 key={bet}
-                onClick={() => onBetChange(bet)}
-                className={`py-2 px-2 rounded text-sm font-semibold transition-all ${
-                  currentBet === bet
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600'
+                onClick={() => onBetChange(currentBet + bet)}
+                className={`py-2 px-2 rounded text-sm font-semibold transition-all bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 ${
+                  currentBet >= bet && currentBet !== 0 ? 'border-2 border-blue-500' : ''
                 }`}
               >
                 R${bet}
